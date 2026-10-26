@@ -27,10 +27,12 @@ com.xiaomi.mimusic2                          # player de música local da Xiaomi
 com.google.android.tvrecommendations         # serviço antigo de recomendações (fileiras de apps usam outro mecanismo)
 # Mantidos por decisão: com.google.android.backdrop (protetor de tela), espelhamento
 #   (com.xiaomi.mitv.smartshare, com.xiaomi.wfdsinkhelperservice, com.mitv.milinkservice)
-# Adiado para a Fase 7: com.mitv.tvhome.atv (PatchWall; botão Mi e possível ligação com o Xiaomi TV+)
+# PatchWall: adiado na Fase 6 e decidido na Fase 7a (ver abaixo)
 
 # Fase 7a – troca de launcher (aprovado em 26/10/2026, depois de instalar e testar com.mihir.tvhome)
 com.google.android.tvlauncher                # tela inicial do Google; com ele ativo o Home não vai para o launcher novo
+com.mitv.tvhome.atv                          # PatchWall; o botão Mi (keycode 192) abre o Xiaomi TV+ via partnercustomizer, não ele
+# NÃO desativar: com.xiaomi.android.tvsetup.partnercustomizer (trata o botão Mi e outros botões do controle)
 # Depois de desativar: cmd package set-home-activity --user 0 com.mihir.tvhome/.MainActivity
 # Ao restaurar, voltar o Home para o Google:
 #   cmd package set-home-activity --user 0 com.google.android.tvlauncher/.MainActivity
