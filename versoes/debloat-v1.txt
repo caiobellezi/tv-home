@@ -22,3 +22,9 @@ com.xiaomi.mitv.mediaexplorer                # "Media Player" de USB (VLC substi
 com.mitv.gallery                             # Galeria de fotos
 com.xiaomi.mimusic2                          # player de música local da Xiaomi
 # Mantido por decisão: com.xiaomi.mitv.tvmanager (TV Manager), rever na Fase 7/8
+
+# Grupo C – com efeito colateral (aprovado um por um em 26/10/2026)
+com.google.android.tvrecommendations         # serviço antigo de recomendações (fileiras de apps usam outro mecanismo)
+# Mantidos por decisão: com.google.android.backdrop (protetor de tela), espelhamento
+#   (com.xiaomi.mitv.smartshare, com.xiaomi.wfdsinkhelperservice, com.mitv.milinkservice)
+# Adiado para a Fase 7: com.mitv.tvhome.atv (PatchWall; botão Mi e possível ligação com o Xiaomi TV+)
