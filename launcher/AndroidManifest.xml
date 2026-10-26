@@ -19,6 +19,7 @@
         </intent>
         <package android:name="com.tcl.tv" />
         <package android:name="com.tcl.suspension" />
+        <package android:name="com.mediatek.wwtv.tvcenter" />
     </queries>
 
     <application

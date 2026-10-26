@@ -28,3 +28,9 @@ com.google.android.tvrecommendations         # serviço antigo de recomendaçõe
 # Mantidos por decisão: com.google.android.backdrop (protetor de tela), espelhamento
 #   (com.xiaomi.mitv.smartshare, com.xiaomi.wfdsinkhelperservice, com.mitv.milinkservice)
 # Adiado para a Fase 7: com.mitv.tvhome.atv (PatchWall; botão Mi e possível ligação com o Xiaomi TV+)
+
+# Fase 7a – troca de launcher (aprovado em 26/10/2026, depois de instalar e testar com.mihir.tvhome)
+com.google.android.tvlauncher                # tela inicial do Google; com ele ativo o Home não vai para o launcher novo
+# Depois de desativar: cmd package set-home-activity --user 0 com.mihir.tvhome/.MainActivity
+# Ao restaurar, voltar o Home para o Google:
+#   cmd package set-home-activity --user 0 com.google.android.tvlauncher/.MainActivity
