@@ -48,11 +48,16 @@ adb connect "$TV" >/dev/null
 adb -s "$TV" install -r "$B/tvhome.apk"
 # Android 10 hides the Wi-Fi name (and reports no network) to apps without location.
 adb -s "$TV" shell pm grant com.mihir.tvhome android.permission.ACCESS_FINE_LOCATION
+# Family calendar on the locked screen, and the kids' timer returning to it over other apps.
+adb -s "$TV" shell pm grant com.mihir.tvhome android.permission.READ_CALENDAR
+adb -s "$TV" shell pm grant com.mihir.tvhome android.permission.WRITE_CALENDAR
+adb -s "$TV" shell pm grant com.mihir.tvhome android.permission.RECORD_AUDIO
+adb -s "$TV" shell appops set com.mihir.tvhome SYSTEM_ALERT_WINDOW allow
 if [ "$MODE" = "--set-home" ]; then
   MSYS_NO_PATHCONV=1 adb -s "$TV" shell cmd package set-home-activity --user 0 com.mihir.tvhome/.MainActivity
   adb -s "$TV" shell input keyevent KEYCODE_HOME
   echo "Installed and set as home. Back to stock: adb shell cmd package set-home-activity --user 0 com.google.android.tvlauncher/.MainActivity"
 else
   MSYS_NO_PATHCONV=1 adb -s "$TV" shell am start -n com.mihir.tvhome/.MainActivity
-  echo "Installed in test mode; the stock launcher is still home."
+  echo "Installed; the Home setting was not changed."
 fi

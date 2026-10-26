@@ -28,6 +28,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.Settings;
+import android.speech.RecognizerIntent;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.KeyEvent;
@@ -57,15 +58,27 @@ import java.util.Set;
 /**
  * Apple TV style home screen: clock top-left, pills top-right, the focused dock app's name over an
  * ambient glow, a dock of pinned apps, and every other app in a grid that scrolls up on Down.
- * Plain framework views only (no AndroidX), no network, no background work.
+ * While nobody is signed in it shows the family calendar instead; the Adult and Kids profiles open
+ * with the adults' PIN (see Profiles). Plain framework views only (no AndroidX), no network.
  */
 public class MainActivity extends Activity {
 
-    // Dock, hidden apps, Live TV and grid width come from res/values/config.xml.
+    // Dock, hidden apps, kids' apps, Live TV and grid width come from res/values/config.xml.
     private String[] dockApps;
     private final Set<String> hidden = new HashSet<>();
+    private final Set<String> kidsApps = new HashSet<>();
+    private int[] kidsMinutes;
     private String liveTvPkg, inputPickerPkg;
     private int cols;
+
+    private Profiles profiles;
+    private Profiles.Mode mode;
+    private CalendarScreen calendar;
+    private boolean calendarOpen;
+    private FrameLayout rootView;
+    private TextView timePill, calendarPill;
+    private int ticks;
+    private static final int REQ_VOICE = 42;
 
     static final class App {
         String pkg, label;
@@ -102,7 +115,13 @@ public class MainActivity extends Activity {
     private PopupWindow inputsPopup;
 
     private final BroadcastReceiver tick = new BroadcastReceiver() {
-        @Override public void onReceive(Context c, Intent i) { updateClock(); updateWifi(); }
+        @Override public void onReceive(Context c, Intent i) {
+            if (profiles.mode() != mode) { rebuild(); return; }
+            updateClock();
+            updateWifi();
+            // Calendar edits sync in the background; redraw the locked screen every 10 minutes.
+            if (mode == Profiles.Mode.LOCKED && ++ticks % 10 == 0) calendar.render();
+        }
     };
     private final BroadcastReceiver packages = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) { buildApps(); }
@@ -116,14 +135,25 @@ public class MainActivity extends Activity {
         dockApps = getResources().getStringArray(R.array.dock_apps);
         hidden.addAll(Arrays.asList(getResources().getStringArray(R.array.hidden_apps)));
         hidden.add(getPackageName());
+        kidsApps.addAll(Arrays.asList(getResources().getStringArray(R.array.kids_apps)));
+        kidsMinutes = getResources().getIntArray(R.array.kids_minutes);
         liveTvPkg = getString(R.string.live_tv_package);
         inputPickerPkg = getString(R.string.input_picker_package);
         cols = getResources().getInteger(R.integer.columns);
         getWindow().getDecorView().setSystemUiVisibility(
                 View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
                         | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY | View.SYSTEM_UI_FLAG_LAYOUT_STABLE);
+        profiles = new Profiles(this);
+        mode = profiles.mode();
+        calendar = new CalendarScreen(this, profiles, new CalendarScreen.Actions() {
+            @Override public void onKids() { startKids(); }
+            @Override public void onAdult() { startAdult(); }
+            @Override public void onVoice() { startVoice(); }
+            @Override public void onBack() { closeCalendar(); }
+        });
         setContentView(buildUi());
         buildApps();
+        if (mode == Profiles.Mode.LOCKED) calendar.resetToToday();
 
         IntentFilter pf = new IntentFilter();
         pf.addAction(Intent.ACTION_PACKAGE_ADDED);
@@ -141,14 +171,21 @@ public class MainActivity extends Activity {
         tf.addAction(Intent.ACTION_TIMEZONE_CHANGED);
         tf.addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION);
         registerReceiver(tick, tf);
+        if (profiles.mode() != mode) rebuild();
         updateClock();
         updateWifi();
-        View last = lastFocusedId == View.NO_ID ? null : findViewById(lastFocusedId);
-        if (last == null && !dockCards.isEmpty()) last = dockCards.get(0);
-        if (last != null) last.requestFocus();
         // Catch installs/removals that happened while another app was in front.
         if (getPackageManager().getChangedPackages(packageSeq) != null) buildApps();
-        if (firstShow) { firstShow = false; playEntrance(); }
+        if (mode == Profiles.Mode.LOCKED || calendarOpen) {
+            calendar.render();
+            calendar.focus();
+            firstShow = false;
+        } else {
+            View last = lastFocusedId == View.NO_ID ? null : findViewById(lastFocusedId);
+            if (last == null && !dockCards.isEmpty()) last = dockCards.get(0);
+            if (last != null) last.requestFocus();
+            if (firstShow) { firstShow = false; playEntrance(); }
+        }
         // New photo on return if the current one has been up for the full interval.
         if (wallIndex < 0 || SystemClock.elapsedRealtime() - wallChangedAt >= WALLPAPER_INTERVAL_MS) nextWallpaper();
         else scheduleWallpaper(WALLPAPER_INTERVAL_MS - (SystemClock.elapsedRealtime() - wallChangedAt));
@@ -171,8 +208,10 @@ public class MainActivity extends Activity {
     @Override
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
-        // Home pressed while already home: jump back to the first dock app.
+        // Home pressed while already home: jump back to the first dock app (or this week).
         if (inputsPopup != null) inputsPopup.dismiss();
+        if (mode == Profiles.Mode.LOCKED) { calendar.resetToToday(); calendar.focus(); return; }
+        if (calendarOpen) closeCalendar();
         if (!dockCards.isEmpty()) dockCards.get(0).requestFocus();
         scroll.smoothScrollTo(0, 0);
     }
@@ -180,13 +219,158 @@ public class MainActivity extends Activity {
     @Override
     public void onBackPressed() {
         // Home has nowhere to go back to; Back from the grid returns to the dock.
+        if (mode == Profiles.Mode.LOCKED) return;
+        if (calendarOpen) { closeCalendar(); return; }
         if (scroll.getScrollY() > 0 && !dockCards.isEmpty()) dockCards.get(0).requestFocus();
+    }
+
+    @Override
+    protected void onActivityResult(int request, int result, Intent data) {
+        super.onActivityResult(request, result, data);
+        if (request != REQ_VOICE || result != RESULT_OK || data == null) return;
+        ArrayList<String> said = data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+        if (said != null && !said.isEmpty()) calendar.handleSpeech(said.get(0));
+    }
+
+    // ---------------------------------------------------------------- calendar from a profile
+
+    /** Opens the family calendar over a profile's home screen; Back or Voltar closes it. */
+    private void openCalendar() {
+        if (inputsPopup != null) inputsPopup.dismiss();
+        ViewGroup old = (ViewGroup) calendar.view().getParent();
+        if (old != null) old.removeView(calendar.view());
+        calendar.configure(true, mode == Profiles.Mode.ADULT);
+        // Invisible views can't take focus, so the D-pad stays on the calendar's buttons.
+        scroll.setVisibility(View.INVISIBLE);
+        rootView.addView(calendar.view(), new FrameLayout.LayoutParams(-1, -1));
+        calendarOpen = true;
+        calendar.resetToToday();
+        calendar.focus();
+    }
+
+    private void closeCalendar() {
+        if (!calendarOpen) return;
+        calendarOpen = false;
+        rootView.removeView(calendar.view());
+        scroll.setVisibility(View.VISIBLE);
+        View pill = calendarPill != null ? calendarPill : (dockCards.isEmpty() ? null : dockCards.get(0));
+        if (pill != null) pill.requestFocus();
+    }
+
+    /**
+     * Speech input that ends by itself after 3 s of silence (VoiceCapture); if the speech service
+     * can't be used directly, the system voice screen. The remote's mic key itself always goes to Google.
+     */
+    private void startVoice() {
+        new VoiceCapture(this, new VoiceCapture.Callback() {
+            @Override public void onText(String text) { calendar.handleSpeech(text); }
+            @Override public void onFallback() { startSystemVoice(); }
+        }).start();
+    }
+
+    private void startSystemVoice() {
+        Intent i = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pt-BR")
+                .putExtra(RecognizerIntent.EXTRA_PROMPT, "Diga o compromisso, o dia e a hora");
+        try {
+            startActivityForResult(i, REQ_VOICE);
+        } catch (RuntimeException e) {
+            android.widget.Toast.makeText(this, "Reconhecimento de voz indisponível", android.widget.Toast.LENGTH_LONG).show();
+        }
+    }
+
+    @Override
+    public void onUserInteraction() {
+        super.onUserInteraction();
+        profiles.touch();
+    }
+
+    // ---------------------------------------------------------------- profiles
+
+    /** Rebuilds the whole screen for the current profile (locked calendar, adult or kids). */
+    private void rebuild() {
+        mode = profiles.mode();
+        if (inputsPopup != null) inputsPopup.dismiss();
+        dockCards.clear();
+        gridCards.clear();
+        pills.clear();
+        lastFocusedId = View.NO_ID;
+        calendarOpen = false;
+        ViewGroup old = (ViewGroup) calendar.view().getParent();
+        if (old != null) old.removeView(calendar.view());
+        setContentView(buildUi());
+        buildApps();
+        updateClock();
+        updateWifi();
+        // Put the current photo back on the new wallpaper layers.
+        if (wallIndex >= 0) { wallIndex = (wallIndex - 1 + Math.max(1, wallpapers.length)) % Math.max(1, wallpapers.length); nextWallpaper(); }
+        if (mode == Profiles.Mode.LOCKED) { calendar.resetToToday(); calendar.focus(); }
+        else if (!dockCards.isEmpty()) dockCards.get(0).requestFocus();
+    }
+
+    private void startAdult() {
+        withPin("PIN do adulto", () -> { profiles.unlockAdult(); rebuild(); });
+    }
+
+    private void startKids() {
+        withPin("PIN de um adulto para liberar as crianças", this::chooseKidsTime);
+    }
+
+    private void chooseKidsTime() {
+        List<TextView> rows = new ArrayList<>();
+        for (int m : kidsMinutes) {
+            rows.add(inputRow(m + " minutos", () -> { profiles.unlockKids(m); rebuild(); }));
+        }
+        showMenu(calendar.view(), rows, Gravity.CENTER);
+    }
+
+    /** Asks for the adults' PIN (creating it on first use) and runs ok when it is right. */
+    private void withPin(String title, Runnable ok) {
+        if (!profiles.hasPin()) { createPin(ok); return; }
+        new PinPad(this, title, (pad, pin) -> {
+            long blocked = profiles.blockedMs();
+            if (blocked > 0) { pad.error("Muitas tentativas. Aguarde " + ((blocked + 999) / 1000) + " s."); return; }
+            if (profiles.checkPin(pin)) { pad.dismiss(); ok.run(); return; }
+            long now = profiles.blockedMs();
+            pad.error(now > 0 ? "Muitas tentativas. Aguarde " + ((now + 999) / 1000) + " s." : "PIN incorreto.");
+        });
+    }
+
+    private void createPin(Runnable ok) {
+        String[] first = {null};
+        new PinPad(this, "Crie o PIN dos adultos (" + Profiles.PIN_LENGTH + " dígitos)", (pad, pin) -> {
+            if (first[0] == null) { first[0] = pin; pad.reset("Digite o PIN de novo"); return; }
+            if (!first[0].equals(pin)) {
+                first[0] = null;
+                pad.reset("Crie o PIN dos adultos (" + Profiles.PIN_LENGTH + " dígitos)");
+                pad.error("Os PINs não conferem. Comece de novo.");
+                return;
+            }
+            profiles.setPin(pin);
+            pad.dismiss();
+            ok.run();
+        });
+    }
+
+    private void changePin() {
+        withPin("PIN atual", () -> createPin(() ->
+                android.widget.Toast.makeText(this, "PIN alterado", android.widget.Toast.LENGTH_SHORT).show()));
+    }
+
+    private void showFamilyMenu(View anchor) {
+        List<TextView> rows = new ArrayList<>();
+        rows.add(inputRow("Bloquear agora", () -> { profiles.lock(); rebuild(); }));
+        rows.add(inputRow("Agendas visíveis sem PIN", () -> CalendarScreen.chooseCalendars(this, profiles)));
+        rows.add(inputRow("Trocar PIN", this::changePin));
+        showMenu(anchor, rows, Gravity.START);
     }
 
     // ---------------------------------------------------------------- layout
 
     private View buildUi() {
         FrameLayout root = new FrameLayout(this);
+        rootView = root;
         root.setBackgroundColor(Color.BLACK);
 
         // Wallpaper: two stacked layers so a new photo can crossfade in over the old one.
@@ -266,6 +450,14 @@ public class MainActivity extends Activity {
         grid.setClipChildren(false);
         grid.setClipToPadding(false);
         content.addView(grid, llp(-1, -2, dp(68), 0, dp(68), dp(160)));
+
+        // Nobody signed in: the family calendar covers the home screen.
+        if (mode == Profiles.Mode.LOCKED) {
+            scroll.setVisibility(View.GONE);
+            glow.setVisibility(View.GONE);
+            calendar.configure(false, true); // anyone in the room may add an event, after confirming
+            root.addView(calendar.view(), new FrameLayout.LayoutParams(-1, -1));
+        }
         return root;
     }
 
@@ -303,11 +495,30 @@ public class MainActivity extends Activity {
         right.setClipChildren(false);
         TextView inputs = pill("Entradas", "⇥");
         inputs.setOnClickListener(v -> showInputs(v));
-        wifiPill = pill("Wi-Fi", "◉");
-        wifiPill.setOnClickListener(v -> launch(new Intent(Settings.ACTION_WIFI_SETTINGS)));
-        TextView settings = pill("Configurações", "⚙");
-        settings.setOnClickListener(v -> launch(new Intent(Settings.ACTION_SETTINGS)));
-        for (TextView p : new TextView[]{inputs, wifiPill, settings}) {
+        calendarPill = pill("Calendário", "▦");
+        calendarPill.setOnClickListener(v -> openCalendar());
+        TextView[] shown;
+        if (mode == Profiles.Mode.KIDS) {
+            // Kids: inputs, the time left, and a way out; no Wi-Fi or Settings.
+            wifiPill = null;
+            timePill = text(11, "sans-serif-medium", 0xE6FFFFFF);
+            timePill.setGravity(Gravity.CENTER);
+            timePill.setPadding(dp(14), 0, dp(14), 0);
+            right.addView(timePill, llp(-2, dp(30), dp(10), 0, 0, 0));
+            TextView exit = pill("Sair", "←");
+            exit.setOnClickListener(v -> { profiles.lock(); rebuild(); });
+            shown = new TextView[]{inputs, calendarPill, exit};
+        } else {
+            timePill = null;
+            wifiPill = pill("Wi-Fi", "◉");
+            wifiPill.setOnClickListener(v -> launch(new Intent(Settings.ACTION_WIFI_SETTINGS)));
+            TextView settings = pill("Configurações", "⚙");
+            settings.setOnClickListener(v -> launch(new Intent(Settings.ACTION_SETTINGS)));
+            TextView family = pill("Família", "⋯");
+            family.setOnClickListener(v -> showFamilyMenu(v));
+            shown = new TextView[]{inputs, calendarPill, wifiPill, settings, family};
+        }
+        for (TextView p : shown) {
             right.addView(p, llp(-2, dp(30), dp(10), 0, 0, 0));
             pills.add(p);
         }
@@ -348,6 +559,8 @@ public class MainActivity extends Activity {
         for (ResolveInfo ri : pm.queryIntentActivities(q, 0)) {
             ActivityInfo ai = ri.activityInfo;
             if (hidden.contains(ai.packageName) || byPkg.containsKey(ai.packageName)) continue;
+            // Kids see only their allow-list; anything new stays hidden until an adult adds it.
+            if (mode == Profiles.Mode.KIDS && !kidsApps.contains(ai.packageName)) continue;
             App a = new App();
             a.pkg = ai.packageName;
             a.label = String.valueOf(ri.loadLabel(pm));
@@ -536,16 +749,6 @@ public class MainActivity extends Activity {
     // ---------------------------------------------------------------- inputs
 
     private void showInputs(View anchor) {
-        LinearLayout list = new LinearLayout(this);
-        list.setOrientation(LinearLayout.VERTICAL);
-        list.setPadding(dp(8), dp(8), dp(8), dp(8));
-        GradientDrawable bg = new GradientDrawable();
-        bg.setCornerRadius(dp(16));
-        bg.setColor(0xF02A2A2E);
-        bg.setStroke(dp(1), 0x26FFFFFF);
-        list.setBackground(bg);
-
-        PopupWindow pw = new PopupWindow(list, dp(200), -2, true);
         List<TextView> rows = new ArrayList<>();
 
         TvInputManager tim = (TvInputManager) getSystemService(TV_INPUT_SERVICE);
@@ -564,7 +767,22 @@ public class MainActivity extends Activity {
         if (isInstalled(liveTvPkg)) rows.add(inputRow("TV ao vivo", () -> openPackage(liveTvPkg)));
         if (inputs.isEmpty() && isInstalled(inputPickerPkg)) rows.add(inputRow("Todas as fontes…", () -> openPackage(inputPickerPkg)));
 
-        if (rows.isEmpty()) rows.add(inputRow("Configurações", () -> launch(new Intent(Settings.ACTION_SETTINGS))));
+        if (rows.isEmpty() && mode != Profiles.Mode.KIDS) rows.add(inputRow("Configurações", () -> launch(new Intent(Settings.ACTION_SETTINGS))));
+        if (!rows.isEmpty()) showMenu(anchor, rows, Gravity.START);
+    }
+
+    /** A rounded list of choices, dropped under the anchor (START) or centred on screen (CENTER). */
+    private void showMenu(View anchor, List<TextView> rows, int gravity) {
+        LinearLayout list = new LinearLayout(this);
+        list.setOrientation(LinearLayout.VERTICAL);
+        list.setPadding(dp(8), dp(8), dp(8), dp(8));
+        GradientDrawable bg = new GradientDrawable();
+        bg.setCornerRadius(dp(16));
+        bg.setColor(0xF02A2A2E);
+        bg.setStroke(dp(1), 0x26FFFFFF);
+        list.setBackground(bg);
+
+        PopupWindow pw = new PopupWindow(list, dp(gravity == Gravity.CENTER ? 280 : 220), -2, true);
         for (TextView r : rows) {
             r.setOnClickListener(v -> { pw.dismiss(); ((Runnable) v.getTag()).run(); });
             list.addView(r, new LinearLayout.LayoutParams(-1, dp(36)));
@@ -578,9 +796,13 @@ public class MainActivity extends Activity {
         }
         pw.setOutsideTouchable(true);
         pw.setElevation(dp(16));
-        pw.setOnDismissListener(() -> { inputsPopup = null; anchor.requestFocus(); });
+        pw.setOnDismissListener(() -> {
+            inputsPopup = null;
+            if (mode == Profiles.Mode.LOCKED) calendar.focus(); else anchor.requestFocus();
+        });
         inputsPopup = pw;
-        pw.showAsDropDown(anchor, 0, dp(8), Gravity.START);
+        if (gravity == Gravity.CENTER) pw.showAtLocation(anchor, Gravity.CENTER, 0, 0);
+        else pw.showAsDropDown(anchor, 0, dp(8), Gravity.START);
         rows.get(0).requestFocus();
     }
 
@@ -619,9 +841,12 @@ public class MainActivity extends Activity {
         clock.setText(new SimpleDateFormat(is24 ? "H:mm" : "h:mm", Locale.getDefault()).format(now.getTime()));
         ampm.setText(is24 ? "" : (h < 12 ? "AM" : "PM"));
         date.setText(new SimpleDateFormat("EEEE  d MMMM", Locale.getDefault()).format(now.getTime()).toUpperCase(Locale.getDefault()));
+        if (timePill != null) timePill.setText("⏱  " + profiles.kidsMinutesLeft() + " min");
+        if (mode == Profiles.Mode.LOCKED) calendar.updateClock();
     }
 
     private void updateWifi() {
+        if (wifiPill == null) return;
         String name = "Wi-Fi";
         try {
             WifiManager wm = (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
@@ -825,6 +1050,11 @@ public class MainActivity extends Activity {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
+        if (mode == Profiles.Mode.LOCKED || calendarOpen) {
+            if (calendar.onKey(e)) return true;
+            if (e.getKeyCode() == KeyEvent.KEYCODE_MENU) return true; // no Inputs without a PIN
+            return super.dispatchKeyEvent(e);
+        }
         // Menu key on the remote opens the Inputs dropdown.
         if (e.getKeyCode() == KeyEvent.KEYCODE_MENU && e.getAction() == KeyEvent.ACTION_UP && !pills.isEmpty()) {
             showInputs(pills.get(0));

@@ -15,6 +15,23 @@
         <item>org.videolan.vlc</item>
     </string-array>
 
+    <!-- The only apps shown in the Kids profile (Live TV stays in the Inputs menu). -->
+    <string-array name="kids_apps">
+        <item>com.netflix.ninja</item>
+        <item>com.amazon.amazonvideo.livingroom</item>
+        <item>it.rainet.androidtv</item>
+        <item>com.spotify.tv.android</item>
+        <item>org.videolan.vlc</item>
+        <item>com.ugreen.nasprotv</item>
+    </string-array>
+
+    <!-- Session lengths an adult can pick when unlocking the Kids profile, in minutes. -->
+    <integer-array name="kids_minutes">
+        <item>30</item>
+        <item>60</item>
+        <item>90</item>
+    </integer-array>
+
     <!-- Never shown as tiles: the Live TV app (it's in the Inputs menu). -->
     <string-array name="hidden_apps">
         <item>com.mediatek.wwtv.tvcenter</item>
