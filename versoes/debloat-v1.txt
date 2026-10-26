@@ -1,0 +1,12 @@
+# Xiaomi MiTV-MOOQ0, Android TV 10, build QTG3.200305.006.5135 – debloat v1 (Fase 6, grupo A)
+# Apply: one "pm disable-user --user 0 <pacote>" at a time.   Undo: "pm enable <pacote>" for each line,
+# or STOCK_LAUNCHER=com.google.android.tvlauncher/.MainActivity tools/restore.sh versoes/debloat-v1.txt
+# Everything is DISABLED for user 0, never uninstalled. Backup before: backups/v0.6-2026-10-26/
+
+# Grupo A – telemetria, propaganda e lixo (aprovado em 26/10/2026)
+com.miui.tv.analytics                        # telemetria da Xiaomi
+com.xiaomi.statistic                         # estatísticas de uso da Xiaomi
+android.autoinstalls.config.xiaomi.amelie    # instala apps promovidos sem pedir
+fusion.android.tv.demo                       # modo demonstração de loja
+com.google.android.feedback                  # envio de feedback ao Google
+com.google.android.tv.bugreportsender        # envio de relatórios de erro
