@@ -10,3 +10,4 @@ shots/
 launcher/build/
 .DS_Store
 __pycache__/
+privado/
