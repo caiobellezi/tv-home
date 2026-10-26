@@ -1,0 +1,10 @@
+3 activities found:
+  Activity #0:
+    priority=2 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true
+    com.google.android.tvlauncher/.MainActivity
+  Activity #1:
+    priority=0 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true
+    com.duokan.factorytest/.FactoryLauncher
+  Activity #2:
+    priority=-1000 preferredOrder=0 match=0x108000 specificIndex=-1 isDefault=true
+    com.android.tv.settings/.system.FallbackHome

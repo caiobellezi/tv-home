@@ -1,0 +1,6 @@
+package:com.spotify.tv.android
+package:com.surfshark.vpnclient.android
+package:com.ugreen.nasprotv
+package:com.xiaomi.mitv.manualhelp
+package:it.rainet.androidtv
+package:org.videolan.vlc
