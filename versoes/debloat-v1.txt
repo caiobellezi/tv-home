@@ -10,3 +10,15 @@ android.autoinstalls.config.xiaomi.amelie    # instala apps promovidos sem pedir
 fusion.android.tv.demo                       # modo demonstração de loja
 com.google.android.feedback                  # envio de feedback ao Google
 com.google.android.tv.bugreportsender        # envio de relatórios de erro
+
+# Grupo B – apps fora da lista de manter (aprovados um por um em 26/10/2026)
+com.google.android.videos                    # Google Play Filmes / Google TV (aba Loja pode ficar vazia)
+com.google.android.play.games                # Google Play Games
+com.xiaomi.amazon.alexa                      # Amazon Alexa
+com.mitv.tvhome.michannel                    # Mi Channel (conteúdo promocional da Xiaomi)
+com.mitv.dream                               # "WallPaper", protetor de tela da Xiaomi (em uso: Backdrop do Google)
+com.xiaomi.mitv.manualhelp                   # manual da TV
+com.xiaomi.mitv.mediaexplorer                # "Media Player" de USB (VLC substitui)
+com.mitv.gallery                             # Galeria de fotos
+com.xiaomi.mimusic2                          # player de música local da Xiaomi
+# Mantido por decisão: com.xiaomi.mitv.tvmanager (TV Manager), rever na Fase 7/8
