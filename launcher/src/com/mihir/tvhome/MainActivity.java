@@ -171,6 +171,8 @@ public class MainActivity extends Activity {
         tf.addAction(Intent.ACTION_TIMEZONE_CHANGED);
         tf.addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION);
         registerReceiver(tick, tf);
+        // Apps an adult let through with the PIN are allowed only until the home screen is back.
+        profiles.clearGrants();
         if (profiles.mode() != mode) rebuild();
         updateClock();
         updateWifi();

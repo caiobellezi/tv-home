@@ -25,6 +25,20 @@
         <item>com.ugreen.nasprotv</item>
     </string-array>
 
+    <!-- Always ask for the PIN when these open, in every profile (Guard). -->
+    <string-array name="always_pin_apps">
+        <item>com.google.android.youtube.tv</item>
+    </string-array>
+
+    <!-- Ask for the PIN outside the Adult profile even though they may have no app icon. -->
+    <string-array name="protected_apps">
+        <item>com.android.tv.settings</item>
+        <item>com.android.vending</item>
+        <item>com.xiaomi.mitv.tvmanager</item>
+    </string-array>
+
+    <string name="guard_description" translatable="false">Pede o PIN dos adultos quando um app não liberado para o perfil atual é aberto.</string>
+
     <!-- Session lengths an adult can pick when unlocking the Kids profile, in minutes. -->
     <integer-array name="kids_minutes">
         <item>30</item>

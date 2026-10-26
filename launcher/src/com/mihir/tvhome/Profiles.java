@@ -65,7 +65,7 @@ final class Profiles {
     }
 
     void lock() {
-        prefs.edit().putString("mode", Mode.LOCKED.name()).apply();
+        prefs.edit().putString("mode", Mode.LOCKED.name()).remove("granted").apply();
         cancelAlarms();
     }
 
@@ -148,6 +148,23 @@ final class Profiles {
         } catch (java.security.NoSuchAlgorithmException e) {
             throw new IllegalStateException(e);
         }
+    }
+
+    // ---------------------------------------------------------------- apps let through by a PIN
+
+    /** An app an adult opened with the PIN stays open until the home screen comes back. */
+    void grant(String pkg) {
+        Set<String> s = new HashSet<>(prefs.getStringSet("granted", new HashSet<>()));
+        s.add(pkg);
+        prefs.edit().putStringSet("granted", s).apply();
+    }
+
+    boolean isGranted(String pkg) {
+        return prefs.getStringSet("granted", new HashSet<>()).contains(pkg);
+    }
+
+    void clearGrants() {
+        if (prefs.contains("granted")) prefs.edit().remove("granted").apply();
     }
 
     // ---------------------------------------------------------------- calendars shown without a PIN

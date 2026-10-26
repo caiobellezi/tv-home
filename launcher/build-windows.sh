@@ -52,6 +52,15 @@ adb -s "$TV" shell pm grant com.mihir.tvhome android.permission.ACCESS_FINE_LOCA
 adb -s "$TV" shell pm grant com.mihir.tvhome android.permission.READ_CALENDAR
 adb -s "$TV" shell pm grant com.mihir.tvhome android.permission.WRITE_CALENDAR
 adb -s "$TV" shell pm grant com.mihir.tvhome android.permission.RECORD_AUDIO
+# Guard (accessibility service): add it to the enabled list, keeping any service already there.
+GUARD=com.mihir.tvhome/com.mihir.tvhome.Guard
+CUR="$(adb -s "$TV" shell settings get secure enabled_accessibility_services | tr -d '\r')"
+case "$CUR" in
+  *"$GUARD"*) ;;
+  ""|null) adb -s "$TV" shell settings put secure enabled_accessibility_services "$GUARD" ;;
+  *) adb -s "$TV" shell settings put secure enabled_accessibility_services "$CUR:$GUARD" ;;
+esac
+adb -s "$TV" shell settings put secure accessibility_enabled 1
 adb -s "$TV" shell appops set com.mihir.tvhome SYSTEM_ALERT_WINDOW allow
 if [ "$MODE" = "--set-home" ]; then
   MSYS_NO_PATHCONV=1 adb -s "$TV" shell cmd package set-home-activity --user 0 com.mihir.tvhome/.MainActivity
